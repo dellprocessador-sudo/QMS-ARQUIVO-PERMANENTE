@@ -1,0 +1,302 @@
+instrument {
+name = "QMS FORCE BREAKOUT M5 V2 PRO",
+short_name = "QMS FORCE PRO",
+icon = "indicators:ADX",
+overlay = false
+}
+
+-- =========================================
+-- 1. CONFIGURACOES
+-- =========================================
+
+input_group {
+"CALCULO DA FORCA",
+
+periodo = input {
+default = 14,
+type = input.integer,
+min = 5,
+max = 50
+},
+
+suavizacao = input {
+default = 3,
+type = input.integer,
+min = 1,
+max = 15
+},
+
+periodo_tendencia = input {
+default = 9,
+type = input.integer,
+min = 3,
+max = 50
+},
+
+sensibilidade = input {
+default = 70,
+type = input.integer,
+min = 30,
+max = 100
+}
+
+}
+
+input_group {
+"NIVEIS DE FORCA",
+
+nivel_equilibrio = input {
+default = 50,
+type = input.integer,
+min = 40,
+max = 60
+},
+
+nivel_forte = input {
+default = 70,
+type = input.integer,
+min = 60,
+max = 90
+},
+
+nivel_fraco = input {
+default = 30,
+type = input.integer,
+min = 10,
+max = 40
+}
+
+}
+
+input_group {
+"CORES",
+
+cor_linha = input {
+default = "#2196FF",
+type = input.color
+},
+
+cor_equilibrio = input {
+default = "#808080",
+type = input.color
+},
+
+cor_forte = input {
+default = "#FFD700",
+type = input.color
+}
+
+}
+
+-- =========================================
+-- 2. ESTRUTURA DO CANDLE
+-- =========================================
+
+amplitude = high - low
+
+amplitude_segura =
+amplitude + 0.000001
+
+corpo = abs(close - open)
+
+corpo_percentual =
+corpo / amplitude_segura * 100
+
+posicao_fechamento =
+(close - low) /
+amplitude_segura * 100
+
+-- =========================================
+-- 3. PRESSAO COMPRADORA
+-- =========================================
+
+corpo_compra =
+max(close - open, 0) /
+amplitude_segura * 100
+
+pressao_compra =
+corpo_compra * 0.60 +
+posicao_fechamento * 0.40
+
+-- =========================================
+-- 4. PRESSAO VENDEDORA
+-- =========================================
+
+corpo_venda =
+max(open - close, 0) /
+amplitude_segura * 100
+
+pressao_venda =
+corpo_venda * 0.60 +
+(100 - posicao_fechamento) * 0.40
+
+-- =========================================
+-- 5. PRESSAO ACUMULADA
+-- =========================================
+
+media_compra =
+sma(pressao_compra, periodo)
+
+media_venda =
+sma(pressao_venda, periodo)
+
+-- =========================================
+-- 6. MOMENTUM DIRECIONAL
+-- =========================================
+
+variacao =
+close - close[1]
+
+compra_direcional =
+max(variacao, 0)
+
+venda_direcional =
+max(-variacao, 0)
+
+media_direcional_compra =
+sma(compra_direcional, periodo)
+
+media_direcional_venda =
+sma(venda_direcional, periodo)
+
+-- =========================================
+-- 7. DOMINANCIA DA PRESSAO
+-- =========================================
+
+total_pressao =
+media_compra + media_venda + 0.000001
+
+dominancia_pressao =
+(media_compra - media_venda) /
+total_pressao
+
+-- =========================================
+-- 8. DOMINANCIA DO MOMENTUM
+-- =========================================
+
+total_momentum =
+media_direcional_compra +
+media_direcional_venda +
+0.000001
+
+dominancia_momentum =
+(media_direcional_compra -
+media_direcional_venda) /
+total_momentum
+
+-- =========================================
+-- 9. COMBINACAO DAS FORCAS
+-- =========================================
+
+forca_combinada =
+dominancia_pressao * 0.65 +
+dominancia_momentum * 0.35
+
+forca_normalizada =
+50 + forca_combinada * 50
+
+-- =========================================
+-- 10. FILTRO DE TENDENCIA
+-- =========================================
+
+media_tendencia =
+ema(close, periodo_tendencia)
+
+tendencia_alta =
+close > media_tendencia
+
+tendencia_baixa =
+close < media_tendencia
+
+-- Ajuste moderado de contexto
+ajuste_tendencia =
+iff(tendencia_alta, 2,
+iff(tendencia_baixa, -2, 0))
+
+forca_contextual =
+forca_normalizada + ajuste_tendencia
+
+-- =========================================
+-- 11. SENSIBILIDADE
+-- =========================================
+
+forca_sensivel =
+50 +
+(forca_contextual - 50) *
+(sensibilidade / 70)
+
+forca_limitada =
+min(max(forca_sensivel, 0), 100)
+
+-- =========================================
+-- 12. SUAVIZACAO
+-- =========================================
+
+forca_final =
+ema(forca_limitada, suavizacao)
+
+-- =========================================
+-- 13. ACELERACAO
+-- =========================================
+
+aceleracao =
+forca_final - forca_final[1]
+
+aceleracao_anterior =
+forca_final[1] - forca_final[2]
+
+forca_acelerando =
+aceleracao > aceleracao_anterior
+
+forca_desacelerando =
+aceleracao < aceleracao_anterior
+
+-- =========================================
+-- 14. LINHA PRINCIPAL
+-- =========================================
+
+plot(
+forca_final,
+"FORCA DOMINANTE",
+cor_linha,
+3
+)
+
+-- =========================================
+-- 15. NIVEIS DE REFERENCIA
+-- =========================================
+
+hline(
+100,
+"MAXIMO",
+cor_equilibrio,
+1
+)
+
+hline(
+nivel_forte,
+"FORCA ELEVADA",
+cor_forte,
+2
+)
+
+hline(
+nivel_equilibrio,
+"EQUILIBRIO",
+cor_equilibrio,
+2
+)
+
+hline(
+nivel_fraco,
+"FORCA BAIXA",
+cor_equilibrio,
+2
+)
+
+hline(
+0,
+"MINIMO",
+cor_equilibrio,
+1
+)
