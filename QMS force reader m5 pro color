@@ -1,0 +1,391 @@
+
+instrument {
+    name = "QMS FORCE READER M5 PRO COLOR",
+    short_name = "QMS FORCE COLOR",
+    icon = "indicators:ADX",
+    overlay = false
+}
+
+-- =====================================
+-- 1. CONFIGURACOES
+-- =====================================
+
+input_group {
+    "CALCULO PRINCIPAL",
+
+    periodo = input {
+        default = 14,
+        type = input.integer,
+        min = 5,
+        max = 50
+    },
+
+    suavizacao = input {
+        default = 3,
+        type = input.integer,
+        min = 1,
+        max = 15
+    },
+
+    periodo_tendencia = input {
+        default = 9,
+        type = input.integer,
+        min = 3,
+        max = 50
+    }
+}
+
+input_group {
+    "NIVEIS DE FORCA",
+
+    nivel_forte = input {
+        default = 70,
+        type = input.integer,
+        min = 60,
+        max = 90
+    },
+
+    nivel_fraco = input {
+        default = 30,
+        type = input.integer,
+        min = 10,
+        max = 40
+    },
+
+    nivel_preparacao = input {
+        default = 60,
+        type = input.integer,
+        min = 50,
+        max = 75
+    }
+}
+
+input_group {
+    "CORES",
+
+    cor_compradora = input {
+        default = "#2196FF",
+        type = input.color
+    },
+
+    cor_vendedora = input {
+        default = "#A020F0",
+        type = input.color
+    },
+
+    cor_preparacao = input {
+        default = "#FFD700",
+        type = input.color
+    },
+
+    cor_neutra = input {
+        default = "#808080",
+        type = input.color
+    },
+
+    cor_alta_forte = input {
+        default = "#00C853",
+        type = input.color
+    },
+
+    cor_baixa_forte = input {
+        default = "#FF5252",
+        type = input.color
+    }
+}
+
+-- =====================================
+-- 2. ESTRUTURA DO CANDLE
+-- =====================================
+
+amplitude = high - low
+
+amplitude_segura = amplitude + 0.000001
+
+corpo_compra =
+max(close - open, 0) /
+amplitude_segura * 100
+
+corpo_venda =
+max(open - close, 0) /
+amplitude_segura * 100
+
+posicao_fechamento =
+(close - low) /
+amplitude_segura * 100
+
+-- =====================================
+-- 3. PRESSAO COMPRADORA
+-- =====================================
+
+pressao_compra =
+corpo_compra * 0.60 +
+posicao_fechamento * 0.40
+
+media_compra =
+sma(pressao_compra, periodo)
+
+-- =====================================
+-- 4. PRESSAO VENDEDORA
+-- =====================================
+
+pressao_venda =
+corpo_venda * 0.60 +
+(100 - posicao_fechamento) * 0.40
+
+media_venda =
+sma(pressao_venda, periodo)
+
+-- =====================================
+-- 5. DOMINANCIA
+-- =====================================
+
+total_pressao =
+media_compra + media_venda + 0.000001
+
+dominancia =
+(media_compra - media_venda) /
+total_pressao
+
+forca_pressao =
+50 + dominancia * 50
+
+-- =====================================
+-- 6. MOMENTUM
+-- =====================================
+
+variacao =
+close - close[1]
+
+movimento_compra =
+max(variacao, 0)
+
+movimento_venda =
+max(-variacao, 0)
+
+media_momentum_compra =
+sma(movimento_compra, periodo)
+
+media_momentum_venda =
+sma(movimento_venda, periodo)
+
+total_momentum =
+media_momentum_compra +
+media_momentum_venda + 0.000001
+
+dominancia_momentum =
+(media_momentum_compra -
+media_momentum_venda) /
+total_momentum
+
+forca_momentum =
+50 + dominancia_momentum * 50
+
+-- =====================================
+-- 7. FORCA COMBINADA
+-- =====================================
+
+forca_combinada =
+forca_pressao * 0.60 +
+forca_momentum * 0.40
+
+-- =====================================
+-- 8. TENDENCIA
+-- =====================================
+
+media_tendencia =
+ema(close, periodo_tendencia)
+
+tendencia_alta =
+close > media_tendencia
+
+tendencia_baixa =
+close < media_tendencia
+
+ajuste_tendencia =
+iff(tendencia_alta, 3,
+iff(tendencia_baixa, -3, 0))
+
+forca_contextual =
+forca_combinada + ajuste_tendencia
+
+forca_limitada =
+min(max(forca_contextual, 0), 100)
+
+-- =====================================
+-- 9. SUAVIZACAO
+-- =====================================
+
+forca_atual =
+ema(forca_limitada, suavizacao)
+
+-- =====================================
+-- 10. ACELERACAO
+-- =====================================
+
+aceleracao =
+forca_atual - forca_atual[1]
+
+aceleracao_anterior =
+forca_atual[1] - forca_atual[2]
+
+aceleracao_compra =
+aceleracao > 0 and
+aceleracao > aceleracao_anterior
+
+aceleracao_venda =
+aceleracao < 0 and
+aceleracao < aceleracao_anterior
+
+-- =====================================
+-- 11. PROJECAO
+-- =====================================
+
+projecao_bruta =
+forca_atual + aceleracao * 2
+
+projecao =
+min(max(projecao_bruta, 0), 100)
+
+-- =====================================
+-- 12. CONTEXTO
+-- =====================================
+
+pressao_compradora =
+media_compra > media_venda
+
+pressao_vendedora =
+media_venda > media_compra
+
+momentum_comprador =
+dominancia_momentum > 0
+
+momentum_vendedor =
+dominancia_momentum < 0
+
+-- =====================================
+-- 13. PREPARACAO
+-- =====================================
+
+preparacao_alta =
+forca_atual >= nivel_preparacao and
+aceleracao > 0 and
+pressao_compradora and
+momentum_comprador and
+tendencia_alta
+
+preparacao_baixa =
+forca_atual <= (100 - nivel_preparacao) and
+aceleracao < 0 and
+pressao_vendedora and
+momentum_vendedor and
+tendencia_baixa
+
+-- =====================================
+-- 14. PERNADA FORTE
+-- =====================================
+
+pernada_alta =
+forca_atual >= nivel_forte and
+projecao >= nivel_forte and
+aceleracao_compra and
+pressao_compradora and
+momentum_comprador and
+tendencia_alta
+
+pernada_baixa =
+forca_atual <= nivel_fraco and
+projecao <= nivel_fraco and
+aceleracao_venda and
+pressao_vendedora and
+momentum_vendedor and
+tendencia_baixa
+
+-- =====================================
+-- 15. DEFINICAO DAS CORES
+-- =====================================
+
+cor_forca =
+iff(pernada_alta,
+cor_alta_forte,
+iff(pernada_baixa,
+cor_baixa_forte,
+iff(preparacao_alta or preparacao_baixa,
+cor_preparacao,
+iff(forca_atual > 50,
+cor_compradora,
+iff(forca_atual < 50,
+cor_vendedora,
+cor_neutra)))))
+
+-- =====================================
+-- 16. COR DA PROJECAO
+-- =====================================
+
+cor_linha_projecao =
+iff(preparacao_alta,
+cor_alta_forte,
+iff(preparacao_baixa,
+cor_baixa_forte,
+iff(projecao > forca_atual,
+cor_compradora,
+iff(projecao < forca_atual,
+cor_vendedora,
+cor_neutra))))
+
+-- =====================================
+-- 17. PLOTAGEM DAS LINHAS
+-- =====================================
+
+plot(
+forca_atual,
+"FORCA ATUAL",
+cor_forca,
+3
+)
+
+plot(
+projecao,
+"PROJECAO",
+cor_linha_projecao,
+2
+)
+
+-- =====================================
+-- 18. NIVEIS DE REFERENCIA
+-- =====================================
+
+hline(
+100,
+"MAXIMO",
+cor_neutra,
+1
+)
+
+hline(
+nivel_forte,
+"FORCA FORTE",
+cor_alta_forte,
+1
+)
+
+hline(
+50,
+"EQUILIBRIO",
+cor_neutra,
+1
+)
+
+hline(
+nivel_fraco,
+"FORCA FRACA",
+cor_baixa_forte,
+1
+)
+
+hline(
+0,
+"MINIMO",
+cor_neutra,
+1
+)
