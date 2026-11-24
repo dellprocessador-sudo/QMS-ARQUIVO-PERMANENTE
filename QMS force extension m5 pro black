@@ -1,0 +1,408 @@
+
+instrument {
+    name = "QMS FORCE EXTENSION M5 PRO BLACK",
+    short_name = "QMS EXTENSION BLACK",
+    icon = "indicators:ADX",
+    overlay = false
+}
+
+-- =====================================
+-- 1. CONFIGURACOES
+-- =====================================
+
+input_group {
+    "CALCULO PRINCIPAL",
+
+    periodo = input {
+        default = 14,
+        type = input.integer,
+        min = 5,
+        max = 50
+    },
+
+    suavizacao = input {
+        default = 3,
+        type = input.integer,
+        min = 1,
+        max = 15
+    },
+
+    periodo_tendencia = input {
+        default = 9,
+        type = input.integer,
+        min = 3,
+        max = 50
+    },
+
+    periodo_atr = input {
+        default = 14,
+        type = input.integer,
+        min = 5,
+        max = 50
+    }
+}
+
+input_group {
+    "NIVEIS DE EXTENSAO",
+
+    nivel_atencao = input {
+        default = 65,
+        type = input.integer,
+        min = 50,
+        max = 85
+    },
+
+    nivel_extremo = input {
+        default = 80,
+        type = input.integer,
+        min = 65,
+        max = 95
+    },
+
+    distancia_atr = input {
+        default = 2.0,
+        type = input.double,
+        min = 0.5,
+        max = 5.0
+    }
+}
+
+input_group {
+    "CORES",
+
+    cor_alta = input {
+        default = "#2196FF",
+        type = input.color
+    },
+
+    cor_baixa = input {
+        default = "#A020F0",
+        type = input.color
+    },
+
+    cor_atencao = input {
+        default = "#FFD700",
+        type = input.color
+    },
+
+    cor_extremo = input {
+        default = "#000000",
+        type = input.color
+    },
+
+    cor_neutra = input {
+        default = "#808080",
+        type = input.color
+    }
+}
+
+-- =====================================
+-- 2. PRESSAO DOS CANDLES
+-- =====================================
+
+amplitude = high - low
+
+segura = amplitude + 0.000001
+
+corpo_compra =
+max(close - open, 0) /
+segura * 100
+
+corpo_venda =
+max(open - close, 0) /
+segura * 100
+
+posicao =
+(close - low) /
+segura * 100
+
+pressao_compra =
+corpo_compra * 0.60 +
+posicao * 0.40
+
+pressao_venda =
+corpo_venda * 0.60 +
+(100 - posicao) * 0.40
+
+media_compra =
+sma(pressao_compra, periodo)
+
+media_venda =
+sma(pressao_venda, periodo)
+
+total_pressao =
+media_compra + media_venda + 0.000001
+
+dominancia =
+(media_compra - media_venda) /
+total_pressao
+
+forca_pressao =
+50 + dominancia * 50
+
+-- =====================================
+-- 3. MOMENTUM
+-- =====================================
+
+variacao =
+close - close[1]
+
+movimento_alta =
+max(variacao, 0)
+
+movimento_baixa =
+max(-variacao, 0)
+
+media_alta =
+sma(movimento_alta, periodo)
+
+media_baixa =
+sma(movimento_baixa, periodo)
+
+total_momentum =
+media_alta + media_baixa + 0.000001
+
+dominancia_momentum =
+(media_alta - media_baixa) /
+total_momentum
+
+forca_momentum =
+50 + dominancia_momentum * 50
+
+-- =====================================
+-- 4. FORCA COMBINADA
+-- =====================================
+
+forca_base =
+forca_pressao * 0.60 +
+forca_momentum * 0.40
+
+media_tendencia =
+ema(close, periodo_tendencia)
+
+ajuste =
+iff(close > media_tendencia, 3,
+iff(close < media_tendencia, -3, 0))
+
+forca_contextual =
+forca_base + ajuste
+
+forca_limitada =
+min(max(forca_contextual, 0), 100)
+
+forca =
+ema(forca_limitada, suavizacao)
+
+-- =====================================
+-- 5. PROJECAO
+-- =====================================
+
+aceleracao =
+forca - forca[1]
+
+projecao_bruta =
+forca + aceleracao * 2
+
+projecao =
+min(max(projecao_bruta, 0), 100)
+
+-- =====================================
+-- 6. DISTANCIA DA FORCA
+-- =====================================
+
+extensao_alta =
+max(forca - 50, 0)
+
+extensao_baixa =
+max(50 - forca, 0)
+
+-- =====================================
+-- 7. ACELERACAO ACUMULADA
+-- =====================================
+
+impulso =
+abs(aceleracao) +
+abs(aceleracao[1]) +
+abs(aceleracao[2])
+
+impulso_media =
+sma(impulso, periodo)
+
+impulso_relativo =
+impulso / (impulso_media + 0.000001)
+
+-- =====================================
+-- 8. DISTANCIA DO PRECO
+-- =====================================
+
+media_preco =
+ema(close, periodo_tendencia)
+
+atr_atual =
+atr(periodo_atr)
+
+distancia_preco =
+abs(close - media_preco) /
+(atr_atual + 0.000001)
+
+-- =====================================
+-- 9. EXTENSAO DO PRECO
+-- =====================================
+
+preco_muito_estendido =
+distancia_preco >= distancia_atr
+
+-- =====================================
+-- 10. PONTUACAO DE EXTENSAO
+-- =====================================
+
+pontuacao_forca_alta =
+min(max((forca - 50) * 2, 0), 100)
+
+pontuacao_forca_baixa =
+min(max((50 - forca) * 2, 0), 100)
+
+pontuacao_projecao_alta =
+min(max((projecao - 50) * 2, 0), 100)
+
+pontuacao_projecao_baixa =
+min(max((50 - projecao) * 2, 0), 100)
+
+pontuacao_preco =
+min(distancia_preco / distancia_atr * 100, 100)
+
+pontuacao_impulso =
+min(impulso_relativo * 50, 100)
+
+-- =====================================
+-- 11. EXTENSAO COMPRADORA
+-- =====================================
+
+extensao_compra =
+pontuacao_forca_alta * 0.35 +
+pontuacao_projecao_alta * 0.20 +
+pontuacao_preco * 0.30 +
+pontuacao_impulso * 0.15
+
+-- =====================================
+-- 12. EXTENSAO VENDEDORA
+-- =====================================
+
+extensao_venda =
+pontuacao_forca_baixa * 0.35 +
+pontuacao_projecao_baixa * 0.20 +
+pontuacao_preco * 0.30 +
+pontuacao_impulso * 0.15
+
+-- =====================================
+-- 13. DETECCAO DE EXTREMOS
+-- =====================================
+
+esticado_alta =
+extensao_compra >= nivel_atencao
+
+esticado_baixa =
+extensao_venda >= nivel_atencao
+
+extremo_alta =
+extensao_compra >= nivel_extremo
+
+extremo_baixa =
+extensao_venda >= nivel_extremo
+
+-- =====================================
+-- 14. POSSIVEL EXAUSTAO
+-- =====================================
+
+perdendo_impulso =
+impulso_relativo < 1
+
+exaustao_alta =
+esticado_alta and
+aceleracao < aceleracao[1] and
+perdendo_impulso
+
+exaustao_baixa =
+esticado_baixa and
+aceleracao > aceleracao[1] and
+perdendo_impulso
+
+-- =====================================
+-- 15. ESTADO DIRECIONAL
+-- =====================================
+
+estado_alta =
+extensao_compra > extensao_venda
+
+estado_baixa =
+extensao_venda > extensao_compra
+
+-- =====================================
+-- 16. DEFINICAO DAS CORES
+-- =====================================
+
+cor_linha =
+iff(extremo_alta or extremo_baixa,
+cor_extremo,
+iff(esticado_alta or esticado_baixa,
+cor_atencao,
+iff(estado_alta,
+cor_alta,
+iff(estado_baixa,
+cor_baixa,
+cor_neutra))))
+
+-- =====================================
+-- 17. PLOTAGEM
+-- =====================================
+
+indice_extensao =
+iff(estado_baixa,
+extensao_venda,
+extensao_compra)
+
+plot(
+indice_extensao,
+"INDICE DE EXTENSAO",
+cor_linha,
+3
+)
+
+-- =====================================
+-- 18. NIVEIS DE REFERENCIA
+-- =====================================
+
+hline(
+100,
+"EXTENSAO MAXIMA",
+cor_neutra,
+1
+)
+
+hline(
+nivel_extremo,
+"EXTREMO",
+cor_extremo,
+2
+)
+
+hline(
+nivel_atencao,
+"ATENCAO",
+cor_atencao,
+2
+)
+
+hline(
+50,
+"EQUILIBRIO",
+cor_neutra,
+1
+)
+
+hline(
+0,
+"SEM EXTENSAO",
+cor_neutra,
+1
+)
