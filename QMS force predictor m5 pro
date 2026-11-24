@@ -1,0 +1,538 @@
+
+instrument {
+    name = "QMS FORCE PREDICTOR M5 PRO",
+    short_name = "QMS PREDICTOR",
+    icon = "indicators:ADX",
+    overlay = false
+}
+
+-- =========================================
+-- 1. CONFIGURACOES
+-- =========================================
+
+input_group {
+    "CALCULO PRINCIPAL",
+
+    periodo = input {
+        default = 14,
+        type = input.integer,
+        min = 5,
+        max = 50
+    },
+
+    suavizacao = input {
+        default = 3,
+        type = input.integer,
+        min = 1,
+        max = 15
+    },
+
+    periodo_tendencia = input {
+        default = 9,
+        type = input.integer,
+        min = 3,
+        max = 50
+    },
+
+    sensibilidade = input {
+        default = 70,
+        type = input.integer,
+        min = 30,
+        max = 100
+    }
+}
+
+input_group {
+    "PREVISAO",
+
+    horizonte = input {
+        default = 2,
+        type = input.integer,
+        min = 1,
+        max = 5
+    },
+
+    peso_previsao = input {
+        default = 35,
+        type = input.integer,
+        min = 10,
+        max = 60
+    },
+
+    nivel_sinal = input {
+        default = 72,
+        type = input.integer,
+        min = 55,
+        max = 95
+    },
+
+    filtro_aceleracao = input {
+        default = 1,
+        type = input.integer,
+        min = 0,
+        max = 1
+    }
+}
+
+input_group {
+    "FILTROS DE ENTRADA",
+
+    corpo_minimo = input {
+        default = 35,
+        type = input.integer,
+        min = 10,
+        max = 80
+    },
+
+    fechamento_minimo = input {
+        default = 65,
+        type = input.integer,
+        min = 50,
+        max = 95
+    }
+}
+
+input_group {
+    "NIVEIS",
+
+    nivel_forte = input {
+        default = 70,
+        type = input.integer,
+        min = 60,
+        max = 90
+    },
+
+    nivel_fraco = input {
+        default = 30,
+        type = input.integer,
+        min = 10,
+        max = 40
+    },
+
+    equilibrio = input {
+        default = 50,
+        type = input.integer,
+        min = 40,
+        max = 60
+    }
+}
+
+input_group {
+    "CORES",
+
+    cor_forca = input {
+        default = "#2196FF",
+        type = input.color
+    },
+
+    cor_previsao = input {
+        default = "#FFD700",
+        type = input.color
+    },
+
+    cor_compra = input {
+        default = "#00C853",
+        type = input.color
+    },
+
+    cor_venda = input {
+        default = "#A020F0",
+        type = input.color
+    },
+
+    cor_neutra = input {
+        default = "#808080",
+        type = input.color
+    }
+}
+
+-- =========================================
+-- 2. ESTRUTURA DO CANDLE
+-- =========================================
+
+amplitude = high - low
+amplitude_segura = amplitude + 0.000001
+
+corpo = abs(close - open)
+
+corpo_percentual =
+    corpo / amplitude_segura * 100
+
+posicao_fechamento =
+    (close - low) / amplitude_segura * 100
+
+candle_comprador = close > open
+candle_vendedor = close < open
+
+candle_compra_forte =
+    candle_comprador and
+    corpo_percentual >= corpo_minimo and
+    posicao_fechamento >= fechamento_minimo
+
+candle_venda_forte =
+    candle_vendedor and
+    corpo_percentual >= corpo_minimo and
+    posicao_fechamento <= (100 - fechamento_minimo)
+
+-- =========================================
+-- 3. PRESSAO COMPRADORA
+-- =========================================
+
+corpo_compra =
+    max(close - open, 0) /
+    amplitude_segura * 100
+
+pressao_compra =
+    corpo_compra * 0.60 +
+    posicao_fechamento * 0.40
+
+media_compra =
+    sma(pressao_compra, periodo)
+
+-- =========================================
+-- 4. PRESSAO VENDEDORA
+-- =========================================
+
+corpo_venda =
+    max(open - close, 0) /
+    amplitude_segura * 100
+
+pressao_venda =
+    corpo_venda * 0.60 +
+    (100 - posicao_fechamento) * 0.40
+
+media_venda =
+    sma(pressao_venda, periodo)
+
+-- =========================================
+-- 5. DOMINANCIA DA PRESSAO
+-- =========================================
+
+total_pressao =
+    media_compra + media_venda + 0.000001
+
+dominancia_pressao =
+    (media_compra - media_venda) /
+    total_pressao
+
+forca_pressao =
+    50 + dominancia_pressao * 50
+
+-- =========================================
+-- 6. MOMENTUM DIRECIONAL
+-- =========================================
+
+variacao = close - close[1]
+
+compra_direcional =
+    max(variacao, 0)
+
+venda_direcional =
+    max(-variacao, 0)
+
+media_direcional_compra =
+    sma(compra_direcional, periodo)
+
+media_direcional_venda =
+    sma(venda_direcional, periodo)
+
+total_momentum =
+    media_direcional_compra +
+    media_direcional_venda + 0.000001
+
+dominancia_momentum =
+    (media_direcional_compra -
+    media_direcional_venda) /
+    total_momentum
+
+forca_momentum =
+    50 + dominancia_momentum * 50
+
+-- =========================================
+-- 7. FORCA COMBINADA
+-- =========================================
+
+forca_combinada =
+    forca_pressao * 0.60 +
+    forca_momentum * 0.40
+
+-- =========================================
+-- 8. TENDENCIA
+-- =========================================
+
+media_tendencia =
+    ema(close, periodo_tendencia)
+
+tendencia_alta =
+    close > media_tendencia
+
+tendencia_baixa =
+    close < media_tendencia
+
+ajuste_tendencia =
+    iff(tendencia_alta, 3,
+    iff(tendencia_baixa, -3, 0))
+
+forca_contextual =
+    forca_combinada + ajuste_tendencia
+
+-- =========================================
+-- 9. SENSIBILIDADE
+-- =========================================
+
+forca_sensivel =
+    50 + (forca_contextual - 50) *
+    (sensibilidade / 70)
+
+forca_limitada =
+    min(max(forca_sensivel, 0), 100)
+
+forca_atual =
+    ema(forca_limitada, suavizacao)
+
+-- =========================================
+-- 10. ACELERACAO
+-- =========================================
+
+aceleracao =
+    forca_atual - forca_atual[1]
+
+aceleracao_anterior =
+    forca_atual[1] - forca_atual[2]
+
+aceleracao_compra =
+    aceleracao > 0 and
+    aceleracao > aceleracao_anterior
+
+aceleracao_venda =
+    aceleracao < 0 and
+    aceleracao < aceleracao_anterior
+
+-- =========================================
+-- 11. PREVISAO DIRECIONAL
+-- =========================================
+
+projecao_bruta =
+    forca_atual + aceleracao * horizonte
+
+projecao =
+    min(max(projecao_bruta, 0), 100)
+
+-- =========================================
+-- 12. PONTUACAO PREDITIVA
+-- =========================================
+
+peso_atual =
+    (100 - peso_previsao) / 100
+
+peso_futuro =
+    peso_previsao / 100
+
+pontuacao_previsao =
+    forca_atual * peso_atual +
+    projecao * peso_futuro
+
+pontuacao_compra =
+    min(max(pontuacao_previsao, 0), 100)
+
+pontuacao_venda =
+    100 - pontuacao_compra
+
+-- =========================================
+-- 13. DETECCAO DE PRESSAO
+-- =========================================
+
+pressao_compradora =
+    media_compra > media_venda
+
+pressao_vendedora =
+    media_venda > media_compra
+
+momentum_comprador =
+    dominancia_momentum > 0
+
+momentum_vendedor =
+    dominancia_momentum < 0
+
+-- =========================================
+-- 14. PREPARACAO DO ROMPIMENTO
+-- =========================================
+
+maxima_anterior =
+    highest(high[1], periodo)
+
+minima_anterior =
+    lowest(low[1], periodo)
+
+rompimento_compra =
+    close > maxima_anterior
+
+rompimento_venda =
+    close < minima_anterior
+
+-- =========================================
+-- 15. FILTRO DE CONTEXTO
+-- =========================================
+
+contexto_compra =
+    tendencia_alta and
+    pressao_compradora and
+    momentum_comprador
+
+contexto_venda =
+    tendencia_baixa and
+    pressao_vendedora and
+    momentum_vendedor
+
+-- =========================================
+-- 16. PREVISAO DE PERNADA
+-- =========================================
+
+previsao_alta =
+    pontuacao_compra >= nivel_sinal and
+    aceleracao > 0 and
+    contexto_compra
+
+previsao_baixa =
+    pontuacao_venda >= nivel_sinal and
+    aceleracao < 0 and
+    contexto_venda
+
+-- =========================================
+-- 17. FILTRO DE ACELERACAO
+-- =========================================
+
+filtro_compra =
+    iff(filtro_aceleracao == 1,
+    aceleracao_compra,
+    aceleracao > 0)
+
+filtro_venda =
+    iff(filtro_aceleracao == 1,
+    aceleracao_venda,
+    aceleracao < 0)
+
+-- =========================================
+-- 18. SINAIS CALL E PUT
+-- =========================================
+
+condicao_call =
+    previsao_alta and
+    filtro_compra and
+    candle_comprador and
+    (candle_compra_forte or rompimento_compra)
+
+condicao_put =
+    previsao_baixa and
+    filtro_venda and
+    candle_vendedor and
+    (candle_venda_forte or rompimento_venda)
+
+-- Somente o primeiro sinal da sequencia
+
+sinal_call =
+    condicao_call and
+    pontuacao_compra[1] < nivel_sinal
+
+sinal_put =
+    condicao_put and
+    pontuacao_venda[1] < nivel_sinal
+
+-- =========================================
+-- 19. PLOTAGEM DAS LINHAS
+-- =========================================
+
+plot(
+    forca_atual,
+    "FORCA ATUAL",
+    cor_forca,
+    3
+)
+
+plot(
+    projecao,
+    "PREVISAO DIRECIONAL",
+    cor_previsao,
+    2
+)
+
+-- =========================================
+-- 20. NIVEIS DE REFERENCIA
+-- =========================================
+
+hline(100, "MAXIMO", cor_neutra, 1)
+
+hline(
+    nivel_forte,
+    "FORCA FORTE",
+    cor_compra,
+    2
+)
+
+hline(
+    equilibrio,
+    "EQUILIBRIO",
+    cor_neutra,
+    1
+)
+
+hline(
+    nivel_fraco,
+    "FORCA FRACA",
+    cor_venda,
+    2
+)
+
+hline(0, "MINIMO", cor_neutra, 1)
+
+-- =========================================
+-- 21. SINAIS VISUAIS
+-- =========================================
+
+plot_shape(
+    sinal_call,
+    "CALL",
+    shape_style.triangleup,
+    shape_size.large,
+    cor_compra,
+    shape_location.bottom,
+    0,
+    "CALL",
+    cor_compra
+)
+
+plot_shape(
+    sinal_put,
+    "PUT",
+    shape_style.triangledown,
+    shape_size.large,
+    cor_venda,
+    shape_location.top,
+    0,
+    "PUT",
+    cor_venda
+)
+
+-- =========================================
+-- 22. ALERTA DE PREVISAO
+-- =========================================
+
+plot_shape(
+    previsao_alta and not sinal_call,
+    "PREVISAO ALTA",
+    shape_style.circle,
+    shape_size.small,
+    cor_compra,
+    shape_location.bottom,
+    0
+)
+
+plot_shape(
+    previsao_baixa and not sinal_put,
+    "PREVISAO BAIXA",
+    shape_style.circle,
+    shape_size.small,
+    cor_venda,
+    shape_location.top,
+    0
+)
